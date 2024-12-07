@@ -1,0 +1,249 @@
+esphome:
+  name: diyless-thermostat
+  friendly_name: DIYLESS Thermostat
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: INFO
+
+# Enable Home Assistant API
+api:
+  encryption:
+     key: "<your key>"
+
+# Enable Over-The-Air (OTA) platform to remotely install modified/updated firmware
+ota:
+ - platform: esphome
+   password: ""
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "DIYLESS Thermostat"
+    password: ""
+
+# Enable captive portal as fallback mechanism for when connecting to the configured WiFi fails.
+captive_portal:
+
+# Enable simple web server to remotelly control the device using web interface
+web_server:  
+  
+# Enable OpenTherm communication
+# https://esphome.io/components/opentherm.html
+opentherm:
+  in_pin: 21 # WeMos D1 Mini ESP32 input pin for stacking with Master OpenTherm Shield
+  out_pin: 22 # WeMos D1 Mini ESP32 output pin for stacking with Master OpenTherm Shield
+
+
+# Use switches to enable/disable central heating and hot water from HA interface
+# https://esphome.io/components/opentherm.html#switch
+switch:
+  - platform: opentherm
+    ch_enable:
+      id: ch_enable
+      name: "Heating"
+      restore_mode: RESTORE_DEFAULT_OFF
+      internal: false
+    dhw_enable:
+      id: dhw_enable
+      name: "Hot Water"
+      restore_mode: RESTORE_DEFAULT_OFF
+
+# Use outputs to control numerical values like Central Heating setpoint using some automatic algorithms
+output:
+  - platform: opentherm
+    t_set:
+      id: ch_setpoint
+      min_value: 30
+      max_value: 80
+      zero_means_zero: true
+
+
+# Use numbers to control numerical values like CH/DHW setpoint from HA interface
+# https://esphome.io/components/opentherm.html#numerical-values 
+number:
+  # - platform: opentherm
+  #   t_set:
+  #     id: ch_setpoint
+  #     name: "Heating Setpoint"
+  #     step: 1
+  #     min_value: 30
+  #     max_value: 80
+  #     restore_value: true
+  #     initial_value: 60
+  - platform: opentherm
+    t_dhw_set:
+      id: dhw_setpoint
+      name: "How Water Setpoint"
+      step: 1
+      min_value: 30
+      max_value: 80
+      restore_value: true
+      initial_value: 60
+
+# Use binary sensors (on/off) to monitor the states and conditions of different boiler entities.
+# https://esphome.io/components/opentherm.html#binary-sensor
+binary_sensor:
+  - platform: opentherm
+    ch_active:
+      id: ch_active
+      name: "Heating Active"
+    dhw_active:
+      id: dhw_active
+      name: "Hot Water Active"
+      
+    flame_on:
+      id: flame_on
+      name: "Flame On"
+    fault_indication:
+      id: fault_indication
+      name: "Boiler Fault"
+      entity_category: diagnostic
+    diagnostic_indication:
+      id: diagnostic_indication
+      name: "Boiler Diagnostic"
+      entity_category: diagnostic
+    service_request:
+      name: Service Required
+      entity_category: diagnostic
+
+    lockout_reset:
+      name: Lockout Reset
+      entity_category: diagnostic
+    low_water_pressure:
+      name: Low Water Pressure Fault
+      entity_category: diagnostic
+    flame_fault:
+      name: Flame Fault
+      entity_category: diagnostic
+    air_pressure_fault:
+      name: Air Pressure Fault
+      entity_category: diagnostic
+    water_over_temp:
+      name: Water Overtemperature
+      entity_category: diagnostic      
+
+
+# Enable tracking bluetooth low energy devices using your ESP32 node.
+esp32_ble_tracker:
+
+#Enable 1-Wire bus for DS18B20 temperature sensor
+# one_wire:
+#   - platform: gpio
+#     pin: 14 # WeMos D1 Mini ESP32 1-wire pin for stacking with Master OpenTherm Shield
+
+sensor:
+# Xiaomi Bluetooth Temperature and Humidity sensor with custom firmware
+# https://esphome.io/components/sensor/xiaomi_ble#lywsd03mmc
+- platform: pvvx_mithermometer
+  id: pvvx_thermometer
+  mac_address: "A4:C1:38:XX:XX:XX" #your sensor MAC
+  temperature:
+    name: "BLE Sensor Temperature"
+    id: ble_sensor
+  humidity:
+    name: "BLE Humidity"
+  battery_level:
+    name: "BLE Battery-Level"
+  battery_voltage:
+    name: "BLE Battery-Voltage"   
+
+# Wired DALLAS DS18B20 sensor
+# - platform: dallas_temp
+#   id: dallas_sensor
+#   name: "Wired Sensor Temperature"
+#   update_interval: 30s
+#   accuracy_decimals: 2
+#   filters:
+#     - sliding_window_moving_average:
+#         window_size: 5
+#         send_every: 2
+#     - heartbeat: 1s
+
+# OpenTherm sensors
+# https://esphome.io/components/opentherm.html#sensor
+- platform: opentherm
+  t_boiler:
+    id: ch_temperature
+    name: "Heating Temperature"
+  t_dhw:
+    id: dhw_temperature
+    name: "Hot Water Temperature"
+  t_dhw2:
+    name: "Hot Water Temperature 2"
+
+  rel_mod_level:
+    id: rel_mod_level
+    name: "Boiler Relative Modulation Level"
+  t_outside:
+    name: Outside Temperature
+  t_ret:
+    name: Return Water Temperature
+
+  max_t_set:
+    name: Max CH Setpoint    
+  max_t_set_ub:
+    name: Upper Bound of CH Setpoint    
+  max_t_set_lb:  
+    name: Lower Bound CH Setpoint
+  t_exhaust:    
+    name: Boiler Exhaust Temperature
+    entity_category: diagnostic
+  ch_pressure:    
+    name: Water Pressure
+    entity_category: diagnostic
+  oem_fault_code:
+    name: OEM Fault Code
+    entity_category: diagnostic
+  oem_diagnostic_code:
+    name: OEM Diagnostic Code
+    entity_category: diagnostic
+
+# Use PID Climate component for automatic boiler setpoint calculation
+# https://esphome.io/components/climate/pid
+climate:
+  - platform: pid
+    id: ch_climate
+    name: "Heating Climate"
+    heat_output: ch_setpoint
+    default_target_temperature: 23
+    sensor: ble_sensor #ble_sensor|dallas_sensor
+    visual:
+      min_temperature: 15
+      max_temperature: 30
+      temperature_step:
+        target_temperature: 0.5
+        current_temperature: 0.1
+    control_parameters: 
+      kp: 0.77
+      ki: 0.0005
+      kd: 0
+      output_averaging_samples: 10
+    deadband_parameters:
+      threshold_high: 0.5
+      threshold_low: -0.5      
+      kp_multiplier: 0
+      ki_multiplier: 0.15
+      kd_multiplier: 0.0
+      deadband_output_averaging_samples: 15
+    on_state:
+      - if:
+          condition:
+          - lambda: 'return id(ch_climate).mode == CLIMATE_MODE_OFF;'
+          then:
+            - switch.turn_off: ch_enable
+          else:
+            - switch.turn_on: ch_enable
+          
+      - logger.log:
+          format: "climate mode=%s, t=%.1f"
+          args: ['std::string(LOG_STR_ARG(climate_mode_to_string(x.mode))).c_str()', 'x.target_temperature' ]            
+          level: INFO    
