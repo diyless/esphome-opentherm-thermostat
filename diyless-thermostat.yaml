@@ -1,3 +1,6 @@
+# DIYLESS Thermostat
+# https://diyless.com/product/opentherm-thermostat
+
 esphome:
   name: diyless-thermostat
   friendly_name: DIYLESS Thermostat

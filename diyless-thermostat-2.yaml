@@ -1,0 +1,613 @@
+# DIYLESS Thermostat 2
+# https://diyless.com/product/opentherm-thermostat2
+
+esphome:
+  name: diyless-thermostat-2
+  friendly_name: DIYLESS Thermostat 2
+  platformio_options:
+    board_build.flash_mode: dio
+  on_boot:
+    - lambda: id(ot_out_pin).setup(); #OT component fix
+    - delay: 3s
+    - lvgl.widget.hide: boot_screen
+   
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+  flash_size: 8MB
+
+# Enable logging
+logger:
+  level: INFO
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "<your key>"
+
+# Enable Over-The-Air (OTA) platform to remotely install modified/updated firmware
+ota:
+ - platform: esphome
+   password: ""
+
+wifi:
+  id: wifi_id
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  on_connect:
+    - lvgl.label.update:
+        id: ip_label
+        text:
+          format: "\uF1EB %s"
+          args: [ 'id(wifi_id).wifi_sta_ip_addresses()[0].str().c_str()' ]
+  on_disconnect:
+    - lvgl.label.update:
+        id: ip_label
+        text: "\uF1EB disconnected"
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "DIYLESS Thermostat 2"
+    password: ""
+
+# Enable captive portal as fallback mechanism for when connecting to the configured WiFi fails.
+captive_portal:
+
+# Enable simple web server to remotelly control the device using web interface
+web_server:
+
+# Enable OpenTherm communication
+# https://esphome.io/components/opentherm.html
+opentherm:
+  in_pin:
+    id: ot_in_pin
+    number: 7
+  out_pin:
+    id: ot_out_pin
+    number: 41
+
+# Use switches to enable/disable central heating and hot water from HA interface
+# https://esphome.io/components/opentherm.html#switch
+switch:
+  - platform: opentherm
+    ch_enable:
+      id: ch_enable
+      name: "Heating"
+      restore_mode: RESTORE_DEFAULT_OFF
+      internal: false
+      on_turn_on:
+        - climate.control:
+            id: ch_climate
+            mode: 'HEAT'
+      on_turn_off:
+        - climate.control:
+            id: ch_climate
+            mode: 'OFF'
+    dhw_enable:
+      id: dhw_enable
+      name: "Hot Water"
+      restore_mode: RESTORE_DEFAULT_OFF
+      on_turn_on:
+        - lvgl.label.update:
+            id: dhw_mode_label
+            text: "ON"
+      on_turn_off:
+        - lvgl.label.update:
+            id: dhw_mode_label
+            text: "OFF"      
+
+# Use outputs to control numerical values like Central Heating setpoint using some automatic algorithms
+output:
+  - platform: opentherm
+    t_set:
+      id: ch_setpoint
+      min_value: 30
+      max_value: 80
+      zero_means_zero: true
+  - platform: ledc
+    id: backlight_output
+    pin:
+      number: GPIO16
+
+# Use numbers to control numerical values like CH/DHW setpoint from HA interface
+# https://esphome.io/components/opentherm.html#numerical-values 
+number:
+  - platform: opentherm
+    t_dhw_set:
+      id: dhw_setpoint
+      name: "How Water Setpoint"
+      step: 1
+      min_value: 30
+      max_value: 80
+      restore_value: true
+      initial_value: 60
+      on_value:
+        - lvgl.label.update:
+            id: dhw_setpoint_label
+            text:
+              format: "%.0f°"
+              args: [ 'x' ]
+        - lvgl.arc.update:
+            id: dhw_setpoint_arc
+            value: !lambda return x * 10;
+        - logger.log:
+            format: "dhw target=%.1f"
+            args: [ 'x' ]
+            level: INFO
+
+# Use binary sensors (on/off) to read the thermostat buttons state
+binary_sensor:
+  - platform: gpio
+    id: button_page
+    pin:      
+      number: 4
+      mode:
+        input: true
+        pullup: true
+    on_press:
+      then:
+      - lvgl.page.next:
+          animation: MOVE_LEFT
+          time: 50ms
+               
+  - platform: gpio
+    id: button_mode
+    pin:      
+      number: 2
+      mode:
+        input: true
+        pullup: true
+    on_press:
+      then:
+        - if:
+            condition:
+            - lambda: 'return id(ch_page)->obj==lv_scr_act();'  
+            then:
+              lambda: |-
+                auto call = id(ch_climate).make_call();
+                switch (id(ch_climate).mode){
+                  case CLIMATE_MODE_OFF:
+                    call.set_mode(CLIMATE_MODE_HEAT);
+                    break;
+                  case CLIMATE_MODE_HEAT:
+                    call.set_mode(CLIMATE_MODE_OFF);
+                    break;                  
+                }
+                call.perform();
+            else:
+              switch.toggle: dhw_enable
+            
+  - platform: gpio
+    id: button_up
+    pin:      
+      number: 17
+      mode:
+        input: true
+        pullup: true
+    on_press:
+      then:
+        - if:
+            condition:
+            - lambda: 'return id(ch_page)->obj==lv_scr_act() && id(ch_climate).target_temperature < 30.0;'
+            then:
+              - climate.control:
+                  id: ch_climate
+                  target_temperature: !lambda return id(ch_climate).target_temperature + 0.5;
+        - if:
+            condition:
+            - lambda: 'return id(dhw_page)->obj==lv_scr_act() && id(dhw_setpoint).state < 80.0;'
+            then:
+              - number.increment: dhw_setpoint
+  - platform: gpio
+    id: button_down
+    pin:      
+      number: 35
+      mode:
+        input: true
+        pullup: true
+    on_press:
+      then:
+        - if:
+            condition:
+            - lambda: 'return id(ch_page)->obj==lv_scr_act() && id(ch_climate).target_temperature > 5;'
+            then:
+              - climate.control:
+                  id: ch_climate
+                  target_temperature: !lambda return id(ch_climate).target_temperature - 0.5;
+        - if:
+            condition:
+            - lambda: 'return id(dhw_page)->obj==lv_scr_act() && id(dhw_setpoint).state > 30.0;'
+            then:
+              - number.decrement: dhw_setpoint
+
+# Use binary sensors (on/off) to monitor the states and conditions of different boiler entities.
+# https://esphome.io/components/opentherm.html#binary-sensor
+  - platform: opentherm
+    ch_active:
+      id: ch_active
+      name: "Heating Active"
+    dhw_active:
+      id: dhw_active
+      name: "Hot Water Active"
+      
+    flame_on:
+      id: flame_on
+      name: "Flame On"
+    fault_indication:
+      id: fault_indication
+      name: "Boiler Fault"
+      entity_category: diagnostic
+    diagnostic_indication:
+      id: diagnostic_indication
+      name: "Boiler Diagnostic"
+      entity_category: diagnostic
+    service_request:
+      name: Service Required
+      entity_category: diagnostic
+    lockout_reset:
+      name: Lockout Reset
+      entity_category: diagnostic
+    low_water_pressure:
+      name: Low Water Pressure Fault
+      entity_category: diagnostic
+    flame_fault:
+      name: Flame Fault
+      entity_category: diagnostic
+    air_pressure_fault:
+      name: Air Pressure Fault
+      entity_category: diagnostic
+    water_over_temp:
+      name: Water Overtemperature
+      entity_category: diagnostic
+
+# Enable tracking bluetooth low energy devices using your ESP32 node.
+esp32_ble_tracker:
+
+#Enable 1-Wire bus for DS18B20 temperature sensor
+# one_wire:
+#   - platform: gpio
+#     id: builtin_one_wire
+#     pin: 1
+#   - platform: gpio
+#     id: external_one_wire
+#     pin: 18    
+
+sensor:
+# Xiaomi Bluetooth Temperature and Humidity sensor with custom firmware
+# https://esphome.io/components/sensor/xiaomi_ble#lywsd03mmc
+- platform: pvvx_mithermometer
+  id: pvvx_thermometer
+  mac_address: "A4:C1:38:XX:XX:XX" #your sensor MAC
+  temperature:
+    name: "BLE Sensor Temperature"
+    id: ble_sensor    
+  humidity:
+    name: "BLE Humidity"
+  battery_level:
+    name: "BLE Battery-Level"
+  battery_voltage:
+    name: "BLE Battery-Voltage"   
+
+# # Built In DS18B20 sensor
+# - platform: dallas_temp
+#   id: builtin_sensor
+#   one_wire_id : builtin_one_wire
+#   name: "Built In Sensor Temperature"
+#   update_interval: 30s
+#   accuracy_decimals: 2
+#   filters:
+#     - sliding_window_moving_average:
+#         window_size: 5
+#         send_every: 2
+#     - heartbeat: 1s
+
+# # External DS18B20 sensor
+# - platform: dallas_temp
+#   id: external_sensor
+#   one_wire_id : external_one_wire
+#   name: "External Sensor Temperature"
+#   update_interval: 30s
+#   accuracy_decimals: 2
+#   filters:
+#     - sliding_window_moving_average:
+#         window_size: 5
+#         send_every: 2
+#     - heartbeat: 1s   
+
+# OpenTherm sensors
+# https://esphome.io/components/opentherm.html#sensor
+- platform: opentherm
+  t_boiler:
+    id: ch_temperature
+    name: "Heating Temperature"
+  t_dhw:
+    id: dhw_temperature
+    name: "Hot Water Temperature"
+    on_value:
+      - lvgl.label.update:
+          id: dhw_temperature_label
+          text:
+            format: "%.0f°"
+            args: [ 'x' ]
+  t_dhw2:
+    name: "Hot Water Temperature 2"        
+  rel_mod_level:
+    id: rel_mod_level
+    name: "Boiler Relative Modulation Level"
+  t_outside:
+    name: Outside Temperature
+  t_ret:
+    name: Return Water Temperature
+  max_t_set:
+    name: Max CH Setpoint    
+  max_t_set_ub:
+    name: Upper Bound of CH Setpoint    
+  max_t_set_lb:  
+    name: Lower Bound CH Setpoint
+  t_exhaust:    
+    name: Boiler Exhaust Temperature
+    entity_category: diagnostic
+  ch_pressure:    
+    name: Water Pressure
+    entity_category: diagnostic
+  oem_fault_code:
+    name: OEM Fault Code
+    entity_category: diagnostic
+  oem_diagnostic_code:
+    name: OEM Diagnostic Code
+    entity_category: diagnostic
+
+
+# Use PID Climate component for automatic boiler setpoint calculation
+# https://esphome.io/components/climate/pid
+climate:
+  - platform: pid
+    id: ch_climate
+    name: "Heating Climate"
+    heat_output: ch_setpoint
+    default_target_temperature: 23
+    sensor: ble_sensor #ble_sensor|builtin_sensor|external_sensor
+    visual:
+      min_temperature: 15
+      max_temperature: 30
+      temperature_step:
+        target_temperature: 0.5
+        current_temperature: 0.1
+    control_parameters: 
+      kp: 0.77
+      ki: 0.0005
+      kd: 0
+      output_averaging_samples: 10
+    deadband_parameters:
+      threshold_high: 0.5
+      threshold_low: -0.5      
+      kp_multiplier: 0
+      ki_multiplier: 0.15
+      kd_multiplier: 0.0
+      deadband_output_averaging_samples: 15
+    on_state:
+      - lvgl.label.update:
+          id: ch_temperature_label
+          text:
+            format: "%.1f°"
+            args: [ 'x.current_temperature' ]    
+      - lvgl.label.update:
+          id: ch_setpoint_label
+          text:
+            format: "%.1f°"
+            args: [ 'x.target_temperature' ]
+      - lvgl.arc.update:
+          id: ch_setpoint_arc
+          value: !lambda return x.target_temperature * 10;
+      - lvgl.label.update:
+          id: ch_mode_label
+          text: !lambda return std::string(LOG_STR_ARG(climate_mode_to_string(x.mode)));
+      - lvgl.label.update:
+          id: ch_action_label
+          text: !lambda return std::string(LOG_STR_ARG(climate_action_to_string(x.action)));
+
+      - if:
+          condition:
+          - lambda: 'return id(ch_climate).mode == CLIMATE_MODE_OFF;'
+          then:
+            - switch.turn_off: ch_enable
+          else:
+            - switch.turn_on: ch_enable
+          
+      - logger.log:
+          format: "climate mode=%s, t=%.1f"
+          args: ['std::string(LOG_STR_ARG(climate_mode_to_string(x.mode))).c_str()', 'x.target_temperature' ]            
+          level: INFO
+
+spi:
+  clk_pin: GPIO09
+  mosi_pin: GPIO11
+
+# Use diplay component for display configuration
+# https://esphome.io/components/display/ili9xxx.html
+display:
+  - platform: ili9xxx
+    id: st7789v_display  
+    model: st7789v
+    data_rate: 20MHz
+    rotation: 90
+    cs_pin: GPIO38
+    dc_pin: GPIO10
+    reset_pin: GPIO36
+    auto_clear_enabled: false
+    update_interval: never
+    invert_colors: true    
+    dimensions:
+      width: 240
+      height: 240
+      offset_height: 0
+      offset_width: 0
+
+# Use light component for backlight brithness configuration
+light:
+  - platform: monochromatic
+    id: backlight
+    name: Thermostat Backlight
+    output: backlight_output
+    restore_mode: ALWAYS_ON
+    default_transition_length: 0s            
+
+# Use LVGL component for UI interface configuration
+# https://esphome.io/components/lvgl/index.html
+lvgl:
+  buffer_size: 25%
+  displays:
+    - st7789v_display
+  disp_bg_color: black
+  text_color: white
+  pages:
+    - id: ch_page
+      bg_opa: TRANSP
+      widgets:
+        - arc:
+            id: ch_setpoint_arc
+            align: CENTER
+            y: 10
+            adjustable: true
+            value: 50
+            min_value: 50
+            max_value: 300
+            width: 210
+            height: 210
+            arc_width: 16
+            arc_color: 0x292929
+            indicator:
+              arc_color: 0xFF6F22
+              arc_width: 16
+            knob:
+              bg_color: 0xFFFFFF
+        - label:
+            id: ch_action_label
+            align: CENTER
+            y: -40
+            text_font: montserrat_14
+            text: "--"
+        - label:
+            id: ch_setpoint_label
+            align: CENTER
+            text: "--.-°"
+            y: 0
+            text_font: montserrat_48
+        - label:
+            id: ch_temperature_label
+            align: CENTER
+            text: "--.-°"
+            text_font: montserrat_24
+            text_color: 0xFF6F22
+            y: 50               
+        - label:
+            id: ch_mode_label
+            align: CENTER
+            y: 90
+            text_font: montserrat_14
+            text: "OFF"
+            border_color: 0xFFFFFF
+            border_width: 1
+            pad_top: 2
+            pad_bottom: 2
+            pad_left: 8
+            pad_right: 8
+
+    - id: dhw_page
+      bg_opa: TRANSP
+      widgets:
+        - arc:
+            id: dhw_setpoint_arc
+            align: CENTER
+            y: 10
+            adjustable: true
+            value: 300
+            min_value: 300
+            max_value: 800
+            width: 210
+            height: 210
+            arc_width: 16
+            arc_color: 0x292929
+            indicator:
+              arc_color: 0x2095F6
+              arc_width: 16
+            knob:
+              bg_color: 0xFFFFFF
+        - label:
+            id: dhw_setpoint_label
+            align: CENTER
+            text: "--.-°"
+            y: 0
+            text_font: montserrat_48
+        - label:
+            id: dhw_temperature_label
+            align: CENTER
+            text: "--.-°"
+            text_font: montserrat_24
+            text_color: 0x2095F6
+            y: 50               
+        - label:
+            id: dhw_mode_label
+            align: CENTER
+            y: 90
+            text: "OFF"
+            text_font: montserrat_14            
+            border_color: 0xFFFFFF
+            border_width: 1
+            pad_top: 2
+            pad_bottom: 2
+            pad_left: 8
+            pad_right: 8            
+
+  top_layer:
+    text_color: white
+    widgets:
+      - label:
+          id: ip_label
+          text: "0.0.0.0"
+          text_color: 0x808080
+          pad_top: 2
+          pad_left: 4
+      - label:
+          id: ot_label
+          align: top_right
+          text: "\uF074"
+          text_color: 0x808080
+          pad_top: 2
+          pad_right: 4          
+      - obj:
+          id: boot_screen
+          x: 0
+          y: 0
+          width: 100%
+          height: 100%
+          bg_color: black
+          bg_opa: COVER
+          radius: 0
+          pad_all: 0
+          border_width: 0
+          widgets:
+            - label:
+                align: CENTER
+                y: -40
+                text: 'DIYLESS'
+                text_font: montserrat_24
+                text_color: 0x2095F6
+            - label:
+                align: CENTER
+                y: 0
+                text: 'Thermostat'
+                text_font: montserrat_24
+                text_color: 0xFFFFFF         
+            - spinner:
+                align: CENTER
+                y: 60
+                height: 50
+                width: 50
+                spin_time: 1s
+                arc_color: 0x292929
+                arc_length: 60deg
+                arc_width: 8
+                indicator:
+                  arc_width: 8
