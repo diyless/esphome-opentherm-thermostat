@@ -12,16 +12,19 @@ https://diyless.com/blog/esphome-opentherm-thermostat
 ## Web Server Interface
 ![Web Server Interface](https://diyless.com/blog/esphome-opentherm-thermostat/esphome-opentherm-thermostat-webserver.webp)
 
-## -- DIYLESS Thermostats --
+## DIYLESS Thermostats 
 
 ## DIYLESS OpenTherm Thermostat 1
-![DIYLESS OpenTherm Thermostat 1](https://diyless.com/blog/esphome-opentherm-thermostat/esphome-opentherm-thermostat/diyless-opentherm-thermostat-1.webp)
+https://diyless.com/product/opentherm-thermostat
+![DIYLESS OpenTherm Thermostat 1](https://diyless.com/blog/esphome-opentherm-thermostat/diyless-opentherm-thermostat-1.webp)
 
 ## DIYLESS OpenTherm Thermostat 2
-![DIYLESS OpenTherm Thermostat 2](https://diyless.com/blog/esphome-opentherm-thermostat/esphome-opentherm-thermostat/diyless-opentherm-thermostat-2.webp)
+https://diyless.com/product/opentherm-thermostat2
+![DIYLESS OpenTherm Thermostat 2](https://diyless.com/blog/esphome-opentherm-thermostat/diyless-opentherm-thermostat-2.webp)
 
 ## DIYLESS OpenTherm Thermostat 3
-![DIYLESS OpenTherm Thermostat 3](https://diyless.com/blog/esphome-opentherm-thermostat/esphome-opentherm-thermostat/diyless-opentherm-thermostat-3.webp)
+https://diyless.com/product/opentherm-thermostat3
+![DIYLESS OpenTherm Thermostat 3](https://diyless.com/blog/esphome-opentherm-thermostat/diyless-opentherm-thermostat-3.webp)
 
 ## License
 Copyright (c) 2024 [DIYLESS](http://diyless.com/). Licensed under the [MIT license](/LICENSE?raw=true).
