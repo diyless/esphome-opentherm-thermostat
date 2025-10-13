@@ -163,6 +163,17 @@ number:
             format: "dhw target=%.1f"
             args: [ 'x' ]
             level: INFO
+  - platform: template
+    name: Display timeout
+    optimistic: true
+    id: display_timeout
+    unit_of_measurement: "s"
+    initial_value: 30
+    restore_value: true
+    min_value: 10
+    max_value: 180
+    step: 5
+    mode: box
 
 # Use binary sensors (on/off) to read the thermostat buttons state
 binary_sensor:
@@ -379,7 +390,8 @@ spi:
     allow_other_uses: true
 
 display:
-  - platform: st7701s
+  - id: diyless_display
+    platform: st7701s
     auto_clear_enabled: false
     update_interval: never
     color_order: RGB
@@ -423,7 +435,8 @@ display:
         - 08        #b5
 
 touchscreen:
-  - platform: gt911 # or ft63x6
+  - id: diyless_touchscreen
+    platform: gt911 # or ft63x6
     #address: 0x48 # for ft63x6
     interrupt_pin:
       number: GPIO10
@@ -436,6 +449,13 @@ touchscreen:
       y_min: 0
       y_max: 480
     update_interval: 100ms
+    on_release:
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - lvgl.resume:
+            - lvgl.widget.redraw:
+            - light.turn_on: backlight
 
 i2c:
   sda: GPIO17
@@ -457,6 +477,14 @@ font:
 lvgl:  
   disp_bg_color: black
   text_color: white
+  displays: diyless_display
+  touchscreens:
+    - touchscreen_id: diyless_touchscreen
+  on_idle:
+    timeout: !lambda "return (id(display_timeout).state * 1000);"
+    then:
+      - light.turn_off: backlight
+      - lvgl.pause:  
   pages:
     - id: ch_page
       bg_opa: TRANSP
