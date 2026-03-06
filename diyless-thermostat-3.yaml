@@ -144,7 +144,7 @@ number:
   - platform: opentherm
     t_dhw_set:
       id: dhw_setpoint
-      name: "How Water Setpoint"
+      name: "Hot Water Setpoint"
       step: 1
       min_value: 30
       max_value: 80
