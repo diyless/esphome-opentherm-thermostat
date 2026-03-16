@@ -44,7 +44,7 @@ wifi:
         id: ip_label
         text:
           format: "\uF1EB %s"
-          args: [ 'id(wifi_id).wifi_sta_ip_addresses()[0].str().c_str()' ]
+          args: [ '({ char buf[esphome::network::IP_ADDRESS_BUFFER_SIZE]; id(wifi_id).wifi_sta_ip_addresses()[0].str_to(buf); buf; })' ]
   on_disconnect:
     - lvgl.label.update:
         id: ip_label
